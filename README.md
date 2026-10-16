@@ -39,6 +39,67 @@ For development purposes, always pull from the **development** branch, as all co
 ### Development Setup
 Please refer to the  [Development Setup Guide](https://github.com/openMF/mifos-mobile/wiki/Set-up-an-environment) for detailed instructions on configuring the development environment.
 
+### Run the Web App
+
+The web app requires JDK 21. Set `JAVA_HOME` to your JDK 21 installation, then start the Kotlin/JS development server from the repository root:
+
+```bash
+export JAVA_HOME=/usr/lib/jvm/jdk-21.0.9+10
+export PATH="$JAVA_HOME/bin:$PATH"
+./gradlew :cmp-web:jsBrowserRun
+```
+
+Open [http://localhost:8080](http://localhost:8080) after the Gradle task starts. Adjust `JAVA_HOME` if JDK 21 is installed in a different directory.
+
+### Register a Test Self-Service User
+
+Before testing registration, make sure the Core Banking/Fineract instance is prepared:
+
+- Run the migration scripts that create the **Self Service User** role.
+- Map the `READ_CLIENT` permission to the **Self Service User** role. Add any other permissions required by the endpoints as testing continues.
+- Configure email and/or SMS delivery in Core Banking so the test user can receive the registration verification code. The app currently requests email authentication.
+- Use the matching Fineract base URL and tenant ID. The app sends the tenant in the `Fineract-Platform-TenantId` request header.
+
+To point the app at your Core Banking instance, update the source configuration before rebuilding:
+
+- In [BaseURL.kt](core/network/src/commonMain/kotlin/org/mifos/mobile/core/network/utils/BaseURL.kt), set `API_ENDPOINT` to the Fineract host. Adjust `API_PATH` or `PROTOCOL_HTTPS` only if your deployment uses a different API path or scheme.
+- In [KtorInterceptor.kt](core/network/src/commonMain/kotlin/org/mifos/mobile/core/network/utils/KtorInterceptor.kt), set `MIFOS_BANK_1` to the tenant ID sent in the `Fineract-Platform-TenantId` header.
+
+The `FINERACT_BASE_URL` and `FINERACT_TENANT` variables in the `curl` example below are only for that command; the app does not read them as runtime configuration.
+
+You can smoke-test the registration endpoint directly with `curl`. Replace the host, tenant, and sample user details with values for your environment:
+
+```bash
+FINERACT_BASE_URL="https://<fineract-host>/fineract-provider/api/v1/self"
+FINERACT_TENANT="<tenant-id>"
+
+curl --request POST "${FINERACT_BASE_URL}/registration" \
+  --header "Content-Type: application/json" \
+  --header "Fineract-Platform-TenantId: ${FINERACT_TENANT}" \
+  --data '{
+    "username": "test.user@example.com",
+    "firstName": "Test",
+    "lastName": "User",
+    "email": "test.user@example.com",
+    "mobileNumber": "+15555550100",
+    "accountNumber": "<client-account-number>",
+    "password": "<temporary-password>",
+    "authenticationMode": "email"
+  }'
+```
+
+### Web CI/CD Deployment
+
+Pushing to `develop` builds the web distribution into a Docker image, publishes it to the existing Docker Hub repository as `spadecorebanking/spadeplatform:mifos-mobile.develop.<short-sha>`, and deploys it to Hostinger. The default web address is `https://mobile.spadecorebanking.com`; point that hostname's DNS to the Hostinger VPS and configure its Traefik HTTPS entry point and `letsencrypt` resolver.
+
+Configure these GitHub Actions secrets in the repository:
+
+- `DOCKER_USERNAME` and `DOCKERHUB_TOKEN` for publishing the image.
+- `HOSTINGER_API_KEY` for deployment.
+- `HOSTINGER_VM_ID` as a repository variable or secret.
+
+The container uses JDK 21 to build the Kotlin/JS app and Nginx to serve the static distribution on port `8178` behind Traefik.
+
 ### Committing Your Changes
 After making changes in your local repository, you will need to commit them to your GitHub repository.
 If you are unfamiliar with the process of committing changes, please refer to the [Committing Your Changes](https://github.com/openMF/mifos-mobile/wiki/Committing-Your-Changes) guide.

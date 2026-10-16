@@ -1,0 +1,16 @@
+.git
+.github
+.gradle
+.idea
+.kotlin
+.vscode
+**/build
+**/node_modules
+*.iml
+*.jks
+*.keystore
+.DS_Store
+local.properties
+secrets.env
+keystores
+cmp-android/google-services.json

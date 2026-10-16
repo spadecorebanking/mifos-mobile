@@ -1,0 +1,22 @@
+services:
+  mifos-mobile-web:
+    image: ${MIFOS_WEB_IMAGE:-spadecorebanking/spadeplatform}:${MIFOS_WEB_IMAGE_TAG:?Set MIFOS_WEB_IMAGE_TAG to the published image tag}
+    container_name: mifos-mobile-web
+    restart: unless-stopped
+    pull_policy: always
+    network_mode: host
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8178/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.mifos-mobile-web.rule: "Host(`${MIFOS_WEB_DOMAIN:-mobile.spadecorebanking.com}`)"
+      traefik.http.routers.mifos-mobile-web.entrypoints: "websecure"
+      traefik.http.routers.mifos-mobile-web.tls: "true"
+      traefik.http.routers.mifos-mobile-web.tls.certresolver: "letsencrypt"
+      traefik.http.routers.mifos-mobile-web.service: "mifos-mobile-web"
+      traefik.http.services.mifos-mobile-web.loadbalancer.server.port: "8178"
+      traefik.http.services.mifos-mobile-web.loadbalancer.server.scheme: "http"

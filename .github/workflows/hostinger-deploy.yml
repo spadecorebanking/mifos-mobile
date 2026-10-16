@@ -1,0 +1,90 @@
+name: Hostinger Mifos Mobile Web CD
+
+on:
+  workflow_call:
+    inputs:
+      image_tag:
+        description: develop image tag published by CI
+        required: true
+        type: string
+    secrets:
+      HOSTINGER_API_KEY:
+        required: true
+      HOSTINGER_VM_ID:
+        description: Optional fallback when the VM ID is not a repository variable
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hostinger-mifos-mobile-develop
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy Mifos Mobile web Compose project
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MIFOS_WEB_IMAGE: spadecorebanking/spadeplatform
+      MIFOS_WEB_DOMAIN: mobile.spadecorebanking.com
+      MIFOS_WEB_IMAGE_TAG: ${{ inputs.image_tag }}
+    steps:
+      - name: Check out deployed revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Verify image, domain and Compose configuration
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          HOSTINGER_VM_ID: ${{ vars.HOSTINGER_VM_ID || secrets.HOSTINGER_VM_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL_SHA=$(git rev-parse HEAD)
+          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+            echo "Expected commit $EXPECTED_SHA, but checked out $ACTUAL_SHA" >&2
+            exit 1
+          fi
+          if [ "$MIFOS_WEB_IMAGE_TAG" != "mifos-mobile.develop.${EXPECTED_SHA::7}" ]; then
+            echo "The deployment tag must match the image published for this commit." >&2
+            exit 1
+          fi
+          if [ -z "$HOSTINGER_VM_ID" ]; then
+            echo "Set HOSTINGER_VM_ID as a repository variable or secret." >&2
+            exit 1
+          fi
+          docker compose config --format json > "$RUNNER_TEMP/mifos-web-compose.json"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          config = json.loads((Path(os.environ['RUNNER_TEMP']) / 'mifos-web-compose.json').read_text())
+          service = config['services']['mifos-mobile-web']
+          expected_image = os.environ['MIFOS_WEB_IMAGE'] + ':' + os.environ['MIFOS_WEB_IMAGE_TAG']
+          labels = service['labels']
+          assert service['image'] == expected_image, 'Compose image does not match the published image'
+          assert labels['traefik.http.routers.mifos-mobile-web.rule'] == 'Host(`' + os.environ['MIFOS_WEB_DOMAIN'] + '`)', 'Unexpected web domain'
+          assert labels['traefik.http.services.mifos-mobile-web.loadbalancer.server.port'] == '8178', 'Proxy must use the Nginx HTTP port'
+          assert labels['traefik.http.routers.mifos-mobile-web.service'] == 'mifos-mobile-web', 'Router and service must match'
+          assert not service.get('ports'), 'Web service must not bind proxy host ports'
+          assert service['network_mode'] == 'host', 'Web service must use the VPS host network'
+          print('Verified image:', expected_image)
+          print('Verified host:', os.environ['MIFOS_WEB_DOMAIN'])
+          PY
+          echo "Deploying commit: $ACTUAL_SHA"
+
+      - name: Deploy web app to Hostinger VPS
+        uses: hostinger/deploy-on-vps@ea1eb4c526fe006abcc38797f5178af1d9d5e38f # v2
+        with:
+          api-key: ${{ secrets.HOSTINGER_API_KEY }}
+          virtual-machine: ${{ vars.HOSTINGER_VM_ID || secrets.HOSTINGER_VM_ID }}
+          project-name: mifos-mobile-web
+          docker-compose-path: docker-compose.yml
+          environment-variables: |
+            MIFOS_WEB_IMAGE=spadecorebanking/spadeplatform
+            MIFOS_WEB_IMAGE_TAG=${{ inputs.image_tag }}
+            MIFOS_WEB_DOMAIN=mobile.spadecorebanking.com
