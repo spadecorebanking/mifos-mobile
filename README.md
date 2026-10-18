@@ -100,6 +100,8 @@ Configure these GitHub Actions secrets in the repository:
 
 The container uses JDK 21 to build the Kotlin/JS app and Nginx to serve the static distribution on port `8178` behind Traefik.
 
+For deployment-specific logos and icons, see the [custom deployment image guide](docs/custom-deployment-branding.md).
+
 ### Committing Your Changes
 After making changes in your local repository, you will need to commit them to your GitHub repository.
 If you are unfamiliar with the process of committing changes, please refer to the [Committing Your Changes](https://github.com/openMF/mifos-mobile/wiki/Committing-Your-Changes) guide.
